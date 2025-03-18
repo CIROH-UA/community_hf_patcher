@@ -19,6 +19,8 @@ FROM base AS install_tools
 RUN nala install -y libsqlite3-mod-spatialite python3-pip
 # install uv via pip as it doesn't work with the shell script
 RUN pip3 install uv --break-system-packages
+# it doesn't matter where this venv ends up, uv will globally cache this package
+RUN uv venv && uv pip install ngiab_data_preprocess
 
 FROM install_tools AS hydrolocations_to_geom
 # This stage converts the hydrolocations layer into the gpkg into a gpkg compliant geometry layer
@@ -35,13 +37,23 @@ FROM hydrolocations_to_geom AS add_index
 RUN uv pip install ngiab_data_preprocess
 RUN uv run python -c "from data_processing.gpkg_utils import verify_indices; verify_indices('/raw_hf/conus_nextgen.gpkg');"
 
+FROM install_tools AS subset_vpus
+WORKDIR /workspace
+RUN uv pip install ngiab_data_preprocess
+COPY --from=add_index /raw_hf/conus_nextgen.gpkg /raw_hf/conus_nextgen.gpkg
+# add VPU subsetting using the preprocssor
+COPY scripts/formatting/vpu_subset.py . 
+RUN uv run vpu_subset.py
+
+FROM install_compressors AS vpu_output
+WORKDIR /workspace
+COPY --from=subset_vpus /workspace/*.gpkg .
+COPY scripts/formatting/compress_vpus.sh .
+RUN ./compress_vpus.sh
+
 FROM install_compressors AS output
 # Compress the output 
 WORKDIR /output/
 COPY --from=add_index /raw_hf/conus_nextgen.gpkg .
 RUN tar cf - "conus_nextgen.gpkg" | pigz > "conus_nextgen.tar.gz"
 
-# FROM output AS vpus
-# # add VPU subsetting using the preprocssor
-# COPY scripts/formatting/vpu_subset.py . 
-# RUN uv run /output/vpu_subset.py
