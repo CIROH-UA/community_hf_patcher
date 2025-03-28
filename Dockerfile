@@ -22,10 +22,15 @@ RUN pip3 install uv --break-system-packages
 # it doesn't matter where this venv ends up, uv will globally cache this package
 RUN uv venv && uv pip install ngiab_data_preprocess
 
-FROM install_tools AS hydrolocations_to_geom
-# This stage converts the hydrolocations layer into the gpkg into a gpkg compliant geometry layer
-COPY --from=download_fabrics /raw_hf /raw_hf
+FROM install_tools AS fix_gages
+# This is performed before hydrolocations are converted as it's easier to modify the tables
 WORKDIR /workspace
+COPY --from=download_fabrics /raw_hf /raw_hf
+COPY scripts/hydro/gages gages
+RUN python3 gages/update_gages.py
+
+FROM fix_gages AS hydrolocations_to_geom
+# This stage converts the hydrolocations layer into the gpkg into a gpkg compliant geometry layer
 COPY scripts/formatting/*hydrolocations_to_geom.* .
 COPY scripts/formatting/utils.py .
 
