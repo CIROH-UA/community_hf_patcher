@@ -33,14 +33,28 @@ def update_gage(conn: sqlite3.Connection, gage_id, wb_id):
     conn.execute(sql, (wb_id, f'gages-{gage_id}'))
 
 
+def add_index(sqlite_db_path):
+    # CREATE INDEX "ntid" ON "network" ( "toid" ASC );
+    # Create an index on the toid column to speed up queries
+    print("Creating index on network.toid to improve query performance...")
+    with sqlite3.connect(sqlite_db_path) as conn:
+        cursor = conn.cursor()
+        try:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_flowpaths_toid ON flowpaths (toid)")
+            conn.commit()
+            print("Index created successfully.")
+        except sqlite3.Error as e:
+            print(f"Warning: Could not create index: {e}")
+
+
 def main():
+    add_index(HYDROFABRIC_PATH)
     with sqlite3.connect(HYDROFABRIC_PATH,autocommit=True) as conn:
         with open(GAGE_CSV, 'r') as csvfile:
-            # drop the header 
+            # drop the header
             _ = csvfile.readline()
             for gage, wb_id in csv.reader(csvfile):
                 update_gage(conn, gage, wb_id)
-
 
 
 if __name__ == "__main__":
