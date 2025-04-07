@@ -13,7 +13,7 @@ INCORRECT_FILTER = 90
 # The minimum percentage difference between the suggested corrected hydrofabric data and the USGS data
 REPLACEMENT_THRESHOLD = 15
 
-#e.g. if the hydrofabric data for a gage is more than 90% different from the USGS data 
+# e.g. if the hydrofabric data for a gage is more than 90% different from the USGS data
 # AND there is a possible correction that is within 15% of the USGS value, then update the hydrofabric with the correction
 
 def compare_areas(csv_file_path, sqlite_db_path):
@@ -31,12 +31,12 @@ def compare_areas(csv_file_path, sqlite_db_path):
     try:
         with open(csv_file_path, 'r', newline='') as csvfile:
             reader = csv.DictReader(csvfile)
-            
+
             # Check if the required columns exist
             if 'gage' not in reader.fieldnames or 'area_sqkm' not in reader.fieldnames:
                 print(f"Error: CSV file must contain 'gage' and 'area_sqkm' columns.")
                 return
-                
+
             for row in reader:
                 try:
                     gage_id = row['gage']
@@ -47,33 +47,33 @@ def compare_areas(csv_file_path, sqlite_db_path):
     except Exception as e:
         print(f"Error reading CSV file: {e}")
         return
-    
+
     print(f"Loaded {len(csv_areas)} gages from CSV file.")
-    
+
     # Connect to the SQLite database
     try:
         conn = sqlite3.connect(sqlite_db_path)
         cursor = conn.cursor()
-        
+
         # Check if the required tables and columns exist
         cursor.execute("PRAGMA table_info('flowpath-attributes')")
         flowpath_attrs_cols = [col[1] for col in cursor.fetchall()]
-        
+
         if 'gage' not in flowpath_attrs_cols or 'id' not in flowpath_attrs_cols:
             print("Error: 'flowpath-attributes' table must contain 'gage' and 'id' columns.")
             conn.close()
             return
-            
+
         cursor.execute("PRAGMA table_info(flowpaths)")
         flowpaths_cols = [col[1] for col in cursor.fetchall()]
-        
+
         required_cols = ['id', 'tot_drainage_areasqkm', 'toid']
         missing_cols = [col for col in required_cols if col not in flowpaths_cols]
         if missing_cols:
             print(f"Error: flowpaths table must contain {', '.join(required_cols)} columns.")
             conn.close()
             return
-        
+
         # Create an index on the toid column to speed up queries
         print("Creating index on flowpaths.toid to improve query performance...")
         try:
@@ -82,7 +82,7 @@ def compare_areas(csv_file_path, sqlite_db_path):
             print("Index created successfully.")
         except sqlite3.Error as e:
             print(f"Warning: Could not create index: {e}")
-        
+
         # Query to get the database areas for each gage along with toid
         query = """
         SELECT fa.gage, fp.tot_drainage_areasqkm, fp.id, fp.toid
@@ -90,7 +90,7 @@ def compare_areas(csv_file_path, sqlite_db_path):
         JOIN flowpaths fp ON fa.id = fp.id
         WHERE fa.gage IS NOT NULL
         """
-        
+
         cursor.execute(query)
         db_info = {}
         for row in cursor.fetchall():
@@ -103,19 +103,19 @@ def compare_areas(csv_file_path, sqlite_db_path):
                 }
             except (ValueError, TypeError) as e:
                 print(f"Warning: Could not process database row for gage {gage}: {e}")
-        
+
         print(f"Retrieved {len(db_info)} gages from database.")
-        
+
         # Find discrepancies
         discrepancies = []
         for gage_id, csv_area in csv_areas.items():
             if gage_id in db_info:
                 db_area = db_info[gage_id]['area']
-                
+
                 # Calculate percentage difference
                 if csv_area == 0 and db_area == 0:
                     continue  # Skip if both areas are zero
-                    
+
                 if csv_area == 0:
                     pct_diff = float('inf')  # Infinite difference if CSV area is zero
                 else:
@@ -123,7 +123,7 @@ def compare_areas(csv_file_path, sqlite_db_path):
 
                 if abs(csv_area - db_area) < MIN_ABSOLUTE_DIFFERENCE:
                     continue
-                    
+
                 # Check if difference is more than 50%
                 if pct_diff > INCORRECT_FILTER:
                     discrepancies.append({
@@ -136,23 +136,23 @@ def compare_areas(csv_file_path, sqlite_db_path):
                     })
             else:
                 print(f"Warning: Gage {gage_id} from CSV not found in database.")
-        
+
         print(f"Initial discrepancies found: {len(discrepancies)}")
-        
+
         # Check for better matches for each discrepancy
         final_discrepancies = []
         replacements = []
-        
+
         for disc in discrepancies:
             gage_id = disc['gage_id']
             csv_area = disc['csv_area_sqkm']
             toid = disc['toid']
-            
+
             if toid is None:
                 print(f"Warning: Gage {gage_id} has NULL toid, cannot find replacement")
                 final_discrepancies.append(disc)
                 continue
-            
+
             # Find all flowpaths with the same toid
             # Using the index created earlier should make this query much faster
             cursor.execute("""
@@ -161,7 +161,7 @@ def compare_areas(csv_file_path, sqlite_db_path):
                 LEFT JOIN 'flowpath-attributes' fa ON fp.id = fa.id
                 WHERE fp.toid = ? AND fp.id != ?
             """, (toid, disc['fp_id']))
-            
+
             potential_matches = []
             for row in cursor.fetchall():
                 fp_id, area = row
@@ -172,12 +172,12 @@ def compare_areas(csv_file_path, sqlite_db_path):
                     })
                 except (ValueError, TypeError) as e:
                     print(f"Warning: Could not process potential match {fp_id}: {e}")
-            
+
             # Calculate differences for potential matches
             better_match = None
             for match in potential_matches:
                 match_area = match['area']
-                
+
                 if csv_area == 0:
                     if match_area == 0:
                         match_pct_diff = 0
@@ -185,7 +185,7 @@ def compare_areas(csv_file_path, sqlite_db_path):
                         match_pct_diff = float('inf')
                 else:
                     match_pct_diff = abs(csv_area - match_area) / csv_area * 100
-                
+
                 # If this match has a smaller percentage difference, it's better
                 if match_pct_diff < disc['pct_diff'] and match_pct_diff < REPLACEMENT_THRESHOLD:
                     if better_match is None or match_pct_diff < better_match['pct_diff']:
@@ -194,7 +194,7 @@ def compare_areas(csv_file_path, sqlite_db_path):
                             'area': match_area,
                             'pct_diff': match_pct_diff
                         }
-            
+
             if better_match:
                 # We found a better match
                 replacements.append({
@@ -210,28 +210,28 @@ def compare_areas(csv_file_path, sqlite_db_path):
             else:
                 # No better match found, keep this as a discrepancy
                 final_discrepancies.append(disc)
-        
+
         # Close the database connection
         conn.close()
-        
+
     except Exception as e:
         print(f"Error accessing SQLite database: {e}")
         if 'conn' in locals():
             conn.close()
         return
-    
+
     # Output the results for discrepancies
     print(f"\nFinal discrepancies (no better match found): {len(final_discrepancies)}")
-    
+
     # Sort by percentage difference (largest first)
     final_discrepancies.sort(key=lambda x: x['pct_diff'], reverse=True)
-    
+
     # Write discrepancies to a CSV file
     discrepancies_file = 'area_discrepancies.csv'
     with open(discrepancies_file, 'w', newline='') as csvfile:
         fieldnames = ['gage_id', 'csv_area_sqkm', 'db_area_sqkm', 'pct_diff', 'fp_id', 'toid']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
+
         writer.writeheader()
         for disc in final_discrepancies:
             writer.writerow(disc)
@@ -239,15 +239,15 @@ def compare_areas(csv_file_path, sqlite_db_path):
                   f"DB area = {disc['db_area_sqkm']:.2f} km², "
                   f"Difference = {disc['pct_diff']:.2f}%, "
                   f"No better match found")
-    
+
     print(f"Discrepancies without suitable replacements written to {discrepancies_file}")
-    
+
     # Output the results for replacements
     print(f"\nPotential replacements found: {len(replacements)}")
-    
+
     # Sort by improvement in percentage difference (largest first)
     replacements.sort(key=lambda x: x['original_pct_diff'] - x['replacement_pct_diff'], reverse=True)
-    
+
     # Write replacements to a CSV file
     replacements_file = 'area_replacements.csv'
     with open(replacements_file, 'w', newline='') as csvfile:
@@ -257,14 +257,14 @@ def compare_areas(csv_file_path, sqlite_db_path):
             'replacement_fp_id', 'replacement_db_area_sqkm', 'replacement_pct_diff'
         ]
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        
+
         writer.writeheader()
         for repl in replacements:
             writer.writerow(repl)
-            print(f"Gage {repl['gage_id']}: CSV area = {repl['csv_area_sqkm']:.2f} km², "
-                  f"Original DB area = {repl['original_db_area_sqkm']:.2f} km² (diff = {repl['original_pct_diff']:.2f}%), "
-                  f"Replacement DB area = {repl['replacement_db_area_sqkm']:.2f} km² (diff = {repl['replacement_pct_diff']:.2f}%)")
-    
+            # print(f"Gage {repl['gage_id']}: CSV area = {repl['csv_area_sqkm']:.2f} km², "
+            #       f"Original DB area = {repl['original_db_area_sqkm']:.2f} km² (diff = {repl['original_pct_diff']:.2f}%), "
+            #       f"Replacement DB area = {repl['replacement_db_area_sqkm']:.2f} km² (diff = {repl['replacement_pct_diff']:.2f}%)")
+
     print(f"Potential replacements written to {replacements_file}")
 
 if __name__ == "__main__":

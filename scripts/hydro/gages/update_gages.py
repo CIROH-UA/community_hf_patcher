@@ -1,7 +1,7 @@
 import csv
 import sqlite3
 
-GAGE_CSV = '/workspace/gages/gages.csv'
+GAGE_CSV = "/workspace/area_replacements.csv"
 HYDROFABRIC_PATH = '/raw_hf/conus_nextgen.gpkg'
 
 
@@ -51,10 +51,11 @@ def main():
     add_index(HYDROFABRIC_PATH)
     with sqlite3.connect(HYDROFABRIC_PATH,autocommit=True) as conn:
         with open(GAGE_CSV, 'r') as csvfile:
-            # drop the header
-            _ = csvfile.readline()
-            for gage, wb_id in csv.reader(csvfile):
-                update_gage(conn, gage, wb_id)
+            for row in csv.DictReader(csvfile):
+                # gage_id, replacement_fp_id
+                gage_id = row["gage_id"]
+                wb_id = row["replacement_fp_id"]
+                update_gage(conn, gage_id, wb_id)
 
 
 if __name__ == "__main__":
