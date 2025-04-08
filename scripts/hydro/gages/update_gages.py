@@ -5,57 +5,77 @@ GAGE_CSV = "/workspace/area_replacements.csv"
 HYDROFABRIC_PATH = '/raw_hf/conus_nextgen.gpkg'
 
 
-def update_gage(conn: sqlite3.Connection, gage_id, wb_id):
+def update_gages_in_bulk(conn: sqlite3.Connection, updates):
+    # Prepare batched updates
+    gages_to_remove = []
+    flowpath_attrs_updates = []
+    flowpath_attrs_ml_updates = []
+    hydrolocations_updates = []
+    pois_updates = []
 
-    # remove incorrect gage assignment
-    sql = "UPDATE 'flowpath-attributes' SET gage = NULL, gage_nex_id = NULL WHERE gage = ?;"
-    conn.execute(sql, (gage_id,))
-    sql = "UPDATE 'flowpath-attributes-ml' SET gage = NULL, gage_nex_id = NULL WHERE gage = ?;"
-    conn.execute(sql, (gage_id,))
+    # Use a set to avoid duplicate gage_ids for removal
+    gages_to_remove_set = {gage_id for gage_id, _, _ in updates}
 
-    # get downstream nexus
-    # this takes a while because there are no indices on the network table yet
-    nex = conn.execute("SELECT toid FROM network WHERE id = ?;", (wb_id,)).fetchone()[0]
+    # Prepare batched updates
+    for gage_id, wb_id, nex in updates:
+        # Prepare updates for flowpath-attributes and flowpath-attributes-ml
+        flowpath_attrs_updates.append((gage_id, nex, wb_id))
+        flowpath_attrs_ml_updates.append((gage_id, nex, wb_id))
 
-    # add the correct gage assignment
-    params = (gage_id, nex, wb_id)
-    sql = "UPDATE 'flowpath-attributes' SET gage = ?, gage_nex_id = ? WHERE id = ?;"
-    conn.execute(sql, params)
-    sql = "UPDATE 'flowpath-attributes-ml' SET gage = ?, gage_nex_id = ? WHERE id = ?;"
-    conn.execute(sql, params)
+        # Prepare updates for hydrolocations
+        hydrolocations_updates.append((wb_id, f"gages-{gage_id}"))
 
-    # update hydrolocations table
-    sql = "UPDATE hydrolocations SET id = ? WHERE hl_uri = ?;"
-    conn.execute(sql, (wb_id, f'gages-{gage_id}'))
+        # Prepare updates for pois
+        pois_updates.append((wb_id, f"gages-{gage_id}"))
 
-    # update the pois table
-    sql = "UPDATE pois SET id = ? WHERE poi_id = (SELECT poi_id FROM hydrolocations WHERE hl_uri = ?);"
-    conn.execute(sql, (wb_id, f'gages-{gage_id}'))
-
-
-def add_index(sqlite_db_path):
-    # CREATE INDEX "ntid" ON "network" ( "toid" ASC );
-    # Create an index on the toid column to speed up queries
-    print("Creating index on network.toid to improve query performance...")
-    with sqlite3.connect(sqlite_db_path) as conn:
-        cursor = conn.cursor()
-        try:
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_flowpaths_toid ON flowpaths (toid)")
-            conn.commit()
-            print("Index created successfully.")
-        except sqlite3.Error as e:
-            print(f"Warning: Could not create index: {e}")
+    # Execute batched updates for setting gage and gage_nex_id to NULL
+    conn.execute(
+        f"UPDATE 'flowpath-attributes' SET gage = NULL, gage_nex_id = NULL WHERE gage IN ({','.join(['?'] * len(gages_to_remove_set))});",
+        list(gages_to_remove_set),
+    )
+    conn.execute(
+        f"UPDATE 'flowpath-attributes-ml' SET gage = NULL, gage_nex_id = NULL WHERE gage IN ({','.join(['?'] * len(gages_to_remove_set))});",
+        list(gages_to_remove_set),
+    )
+    # Execute the rest of the updates
+    conn.executemany(
+        "UPDATE 'flowpath-attributes' SET gage = ?, gage_nex_id = ? WHERE id = ?;",
+        flowpath_attrs_updates,
+    )
+    conn.executemany(
+        "UPDATE 'flowpath-attributes-ml' SET gage = ?, gage_nex_id = ? WHERE id = ?;",
+        flowpath_attrs_ml_updates,
+    )
+    conn.executemany(
+        "UPDATE hydrolocations SET id = ? WHERE hl_uri = ?;",
+        hydrolocations_updates,
+    )
+    conn.executemany(
+        "UPDATE pois SET id = ? WHERE poi_id = (SELECT poi_id FROM hydrolocations WHERE hl_uri = ?);",
+        pois_updates,
+    )
 
 
 def main():
-    add_index(HYDROFABRIC_PATH)
-    with sqlite3.connect(HYDROFABRIC_PATH,autocommit=True) as conn:
+    with sqlite3.connect(HYDROFABRIC_PATH) as conn:
+        conn.isolation_level = "EXCLUSIVE"  # Use a single transaction
         with open(GAGE_CSV, 'r') as csvfile:
+            updates = []
             for row in csv.DictReader(csvfile):
-                # gage_id, replacement_fp_id
                 gage_id = row["gage_id"]
                 wb_id = row["replacement_fp_id"]
-                update_gage(conn, gage_id, wb_id)
+
+                # Fetch downstream nexus (cache results if possible)
+                nex = conn.execute(
+                    "SELECT toid FROM flowpaths WHERE id = ?;", (wb_id,)
+                ).fetchone()[0]
+
+                updates.append((gage_id, wb_id, nex))
+
+            # Perform batched updates
+            update_gages_in_bulk(conn, updates)
+
+        conn.commit()  # Commit all changes in one go
 
 
 if __name__ == "__main__":
