@@ -38,8 +38,8 @@ Docker is being used in a *slightly* unconventional way here to take advantage o
 1. **Build the Docker Image**:
    The Dockerfile defines multiple stages for downloading, processing, and compressing hydrofabric data. Each stage performs a specific task, such as:
    - Downloading raw hydrofabric files.
-   - Updating gages and converting hydrolocations.
    - Adding indices for faster querying.
+   - Updating gages and converting hydrolocations.
    - Subsetting VPUs and compressing the output.
 
 2. **Run the Docker Container**:
@@ -49,6 +49,6 @@ Docker is being used in a *slightly* unconventional way here to take advantage o
    If you have valid credentials to the community hydrofabric s3 bucket, uncomment the lines in `generate_hydrofabric.sh` to upload the output automatically.
 
 # Current Patches
-* Correct gage-10154200 position to wb-2863631
+* Correct the gage to flowpath mapping of around 4500 gages. Full [list available here](https://communityhydrofabric.s3.us-east-1.amazonaws.com/hydrofabrics/community/gage_replacements.csv) in the [community hydrofabric bucket](https://communityhydrofabric.s3.us-east-1.amazonaws.com/index.html#hydrofabrics/community/)
 * Reformat hydrolocation table to be gpkg compliant (should now show up in GIS application / tools as geometry)
 * Add database indices to commonly searched values to speed up operations. e.g. select * from divides where id="wb-1234"
