@@ -69,6 +69,7 @@ RUN ./compress_vpus.sh
 FROM install_compressors AS output
 # Compress the output 
 WORKDIR /output/
+COPY --from=fix_gages /workspace/gage_replacements.csv .
 COPY --from=hydrolocations_to_geom /raw_hf/conus_nextgen.gpkg .
 RUN tar cf - "conus_nextgen.gpkg" | pigz > "conus_nextgen.tar.gz"
 

@@ -249,7 +249,7 @@ def compare_areas(csv_file_path, sqlite_db_path):
     replacements.sort(key=lambda x: x['original_pct_diff'] - x['replacement_pct_diff'], reverse=True)
 
     # Write replacements to a CSV file
-    replacements_file = 'area_replacements.csv'
+    replacements_file = "gage_replacements.csv"
     with open(replacements_file, 'w', newline='') as csvfile:
         fieldnames = [
             'gage_id', 'csv_area_sqkm', 

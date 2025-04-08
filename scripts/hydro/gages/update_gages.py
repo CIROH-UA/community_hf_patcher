@@ -1,7 +1,7 @@
 import csv
 import sqlite3
 
-GAGE_CSV = "/workspace/area_replacements.csv"
+GAGE_CSV = "/workspace/gage_replacements.csv"
 HYDROFABRIC_PATH = '/raw_hf/conus_nextgen.gpkg'
 
 
