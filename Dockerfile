@@ -46,6 +46,8 @@ RUN uv run python -c "from data_processing.gpkg_utils import verify_indices; ver
 RUN uv run python -c "from data_processing.gpkg_utils import verify_indices; verify_indices('/raw_hf/hi_nextgen.gpkg');"
 RUN uv run python -c "from data_processing.gpkg_utils import verify_indices; verify_indices('/raw_hf/prvi_nextgen.gpkg');"
 
+FROM add_index AS assign_srs
+RUN sqlite3 /raw_hf/prvi_nextgen.gpkg "UPDATE 'gpkg_geometry_columns' SET srs_id = '6566';"
 
 
 FROM add_index AS fix_gages
@@ -88,7 +90,7 @@ WORKDIR /output
 COPY --from=fix_gages /raw_hf/ak_nextgen.gpkg .
 # COPY --from=add_index /raw_hf/gl_nextgen.gpkg .
 COPY --from=add_index /raw_hf/hi_nextgen.gpkg .
-COPY --from=add_index /raw_hf/prvi_nextgen.gpkg .
+COPY --from=assign_srs /raw_hf/prvi_nextgen.gpkg .
 RUN tar cf - "ak_nextgen.gpkg" | pigz > "ak_nextgen.tar.gz"
 # RUN tar cf - "gl_nextgen.gpkg" | pigz > "gl_nextgen.tar.gz"
 RUN tar cf - "hi_nextgen.gpkg" | pigz > "hi_nextgen.tar.gz"

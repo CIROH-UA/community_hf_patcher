@@ -14,9 +14,22 @@ geopackages = [GeoPackage(gpkg) for gpkg in gpkg_paths]
 for gpkg in geopackages:
     # run the script
     for table in gpkg.tables:
+        # print(f"Processing table: {table}")
         columns = gpkg.get_columns(table)
         for column in columns:
-            gpkg.rename_column(table, column, column.replace("Time=", ""))
+            # print(f"Processing column: {column}")
+            if column == "mean.slope_Time=":
+                new_name = column.replace("_Time=", "_1km")
+            else:
+                new_name = column.replace("_Time=", "")
+
+            if new_name.startswith("dksat"):
+                new_name = "geom_mean." + new_name
+            if new_name.startswith("psisat"):
+                new_name = "geom_mean." + new_name
+
+            gpkg.rename_column(table, column, new_name)
+
     gpkg.rename_column("divide-attributes", "X", "centroid_x")
     gpkg.rename_column("divide-attributes", "Y", "centroid_y")
     # update the layer statistics
