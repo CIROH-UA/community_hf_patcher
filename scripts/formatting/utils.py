@@ -1,7 +1,8 @@
-from pyproj import CRS
 import sqlite3
-from typing import Optional, Any
 from contextlib import contextmanager
+from typing import Any, Optional
+
+from pyproj import CRS
 
 
 class GeoPackage:
@@ -54,11 +55,38 @@ class GeoPackage:
             self.conn.rollback()
             raise
 
+    @property
+    def tables(self):
+        with self as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT name FROM sqlite_sequence")
+            return [row[0] for row in cur.fetchall()]
+
+    def get_columns(self, table_name: str):
+        with self as conn:
+            cur = conn.cursor()
+            cur.execute(f"PRAGMA table_info('{table_name}')")
+            return [row[1] for row in cur.fetchall()]
+
+    def add_column(self, table_name: str, column_name: str, column_type: str):
+        with self as conn:
+            cur = conn.cursor()
+            cur.execute(f"ALTER TABLE '{table_name}' ADD COLUMN '{column_name}' {column_type}")
+            conn.commit()
+
+    def rename_column(self, table_name: str, old_column_name: str, new_column_name: str):
+        with self as conn:
+            cur = conn.cursor()
+            cur.execute(
+                f"ALTER TABLE '{table_name}' RENAME COLUMN '{old_column_name}' TO '{new_column_name}'"
+            )
+            conn.commit()
+
     def create_table(self, table_name: str, schema: dict):
         with self as conn:
             cur = conn.cursor()
             sqlformatted_schema = ", ".join([f"'{k}' {v}" for k, v in schema.items()])
-            sql = f'CREATE TABLE IF NOT EXISTS {table_name} ("fid" INTEGER NOT NULL, {sqlformatted_schema}, PRIMARY KEY("fid" AUTOINCREMENT))'
+            sql = f"CREATE TABLE IF NOT EXISTS '{table_name}' ('fid' INTEGER NOT NULL, {sqlformatted_schema}, PRIMARY KEY('fid' AUTOINCREMENT))"
             cur.execute(sql)
             conn.commit()
 
