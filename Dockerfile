@@ -64,6 +64,10 @@ COPY scripts/formatting/*hydrolocations_to_geom.* .
 RUN uv venv && uv pip install pyproj
 RUN uv run hydrolocations_to_geom.py
 
+FROM hydrolocations_to_geom as dHBV2
+ADD https://communityhydrofabric.s3.us-east-1.amazonaws.com/hydrofabrics/community/resources/dhbv_attrs.parquet .
+COPY scripts/formatting/add_dhbv_attrs.py .
+RUN uv run add_dhbv_attrs.py
 
 #####################################
 #           OUTPUT BELOW            #
@@ -97,5 +101,5 @@ RUN tar cf - "hi_nextgen.gpkg" | pigz > "hi_nextgen.tar.gz"
 RUN tar cf - "prvi_nextgen.gpkg" | pigz > "prvi_nextgen.tar.gz"
 
 COPY --from=fix_gages /workspace/gage_replacements.csv .
-COPY --from=hydrolocations_to_geom /raw_hf/conus_nextgen.gpkg .
+COPY --from=dHBV2 /raw_hf/conus_nextgen.gpkg .
 RUN tar cf - "conus_nextgen.gpkg" | pigz > "conus_nextgen.tar.gz"
